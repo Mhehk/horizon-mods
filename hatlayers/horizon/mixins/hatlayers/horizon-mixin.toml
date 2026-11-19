@@ -1,0 +1,70 @@
+[mod]
+id = "hatlayers"
+version = "1.2.0"
+priority = 100
+
+# Pinned to nightly-source/2026-11-13-9f42064: the TAB list's players and its
+# head drawing are internal functions, not catalogued hook points.
+[compatibility]
+horizon_revision = "9f42064c11efe7ef3e5ed2baad7ddc2a3b36eea0"
+
+[[module]]
+id = "marker"
+file = "crates/horizon-client-render/src/tab_list.rs"
+name = "hatlayers_marker"
+source = "marker.rs"
+visibility = "pub"
+
+[[injection]]
+id = "list"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_mods"
+helper = "list.rs"
+bindings = [
+  { name = "mods", ty = "&mut Vec<NativeMod>", value = "&mut *mods" },
+]
+
+[[injection]]
+id = "tab"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::remote::Game<'_>::remote_tab_players"
+helper = "tab.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "face"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client_render::tab_list::face"
+helper = "face.rs"
+bindings = [
+  { name = "out", ty = "&mut Vec<GuiDraw>", value = "&mut *out" },
+  { name = "skin", ty = "&str", value = "skin" },
+  { name = "x", ty = "i32", value = "x" },
+  { name = "y", ty = "i32", value = "y" },
+  { name = "size", ty = "i32", value = "size" },
+  { name = "hat", ty = "bool", value = "hat" },
+  { name = "flip", ty = "bool", value = "flip" },
+  { name = "color", ty = "u32", value = "color" },
+]
+
+[[module]]
+id = "status"
+file = "crates/horizon-client/src/game/remote.rs"
+name = "hatlayers"
+source = "status.rs"
+visibility = "pub(crate)"
+
+[[injection]]
+id = "command"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_command"
+helper = "command.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "command", ty = "&str", value = "command" },
+  { name = "ran", ty = "&mut bool", value = "&mut *ran" },
+]
