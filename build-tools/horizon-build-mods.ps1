@@ -23,6 +23,8 @@ $bundles = @{
   healthindicators = "$c\HealthIndicators\horizon\mixins\healthindicators"
   opsec          = "$c\OpSec\horizon\mixins\opsec"
   arena          = "$c\ArenaHud\mixins\arena"
+  hesaplar       = "$c\Hesaplar\mixins\hesaplar"
+  pusula         = "$c\Pusula\mixins\pusula"
 }
 $mods = "$bt\build-mods"
 if (Test-Path $mods) { Remove-Item -Recurse -Force $mods }

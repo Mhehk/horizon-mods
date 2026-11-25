@@ -1,6 +1,6 @@
 [mod]
 id = "arena"
-version = "16.10.1"
+version = "16.10.2"
 priority = 100
 
 # Pinned like Eksen: world_primitives (Hitbox, Block Overlay) is not a

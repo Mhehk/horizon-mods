@@ -1,4 +1,4 @@
-// Arena HUD — 16.10.1 (mihehk): the mod's state and its reach into the
+// Arena HUD — 16.10.2 (mihehk): the mod's state and its reach into the
 // game. Each frame (the HUD hook) reads the keys, counts clicks and frames,
 // turns the camera into Mousestrokes, builds a `Snapshot` and draws the
 // modules where they are placed; attacks (sent) and damage events
@@ -23,9 +23,9 @@ use super::arena_editor as ed;
 
 pub const ID: &str = "arena";
 pub const NAME: &str = "Arena HUD";
-pub const VERSION: &str = "16.10.1";
+pub const VERSION: &str = "16.10.2";
 pub const DESCRIPTION: &str =
-    "PvP HUD: Keystrokes, CPS, Mousestrokes, Reach, Combo, Hitbox, Toggle Sprint, Armor Status, Potion Effects, Ping, FPS, Block Overlay, Target HUD, Speed, Coordinates, Session Stats. Sağ Alt: HUD editörü · /arena";
+    "PvP HUD: Keystrokes, CPS, Mousestrokes, Reach, Combo, Hitbox, Toggle Sprint, Armor Status, Potion Effects, Ping, FPS, Block Overlay, Target HUD, Speed, Coordinates, Session Stats, Server Address, Session Time, Reach History. Sağ Alt: HUD editörü · /arena";
 pub const PREFIX: &str = "[Arena] ";
 
 /// Mod keys: name, label, default key.
@@ -50,6 +50,8 @@ pub struct State {
     fade: core::Fade,
     mouse: core::Mouse,
     speed: core::Speed,
+    /// Session Time: the server (or "singleplayer") joined, and when.
+    joined: Option<(String, u64)>,
     /// The mappings' state last frame (for presses).
     held: [bool; 9],
     /// Toggle Sprint's toggle.
@@ -158,6 +160,11 @@ pub(crate) fn hud(game: &mut super::Game<'_>, batch: &mut horizon_client::hud::H
     let (ping, armor, hand, effects, sprinting) = (horizon_ping(game), horizon_armor(game), horizon_hand(game), horizon_effects(game), horizon_sprinting(game));
     let feet = game.player.as_ref().map(|p| [p.position.x, p.position.y, p.position.z]);
     let eye = game.player.as_ref().map(|p| [p.position.x, p.position.y + f64::from(p.dimensions.eye_height), p.position.z]);
+    // `session.address` as OpSec and Voice Chat read it; single player has
+    // its own integrated server, not an address to show.
+    let single = game.has_singleplayer_server();
+    let server = game.remote.as_ref().filter(|_| !single).map(|r| r.session.address.clone());
+    let place = if single { Some("singleplayer".to_owned()) } else { server.clone() };
     let screen = [batch.width, batch.height];
     let measure = |s: &str| game.native_text_width(s);
     let laid = {
@@ -183,6 +190,10 @@ pub(crate) fn hud(game: &mut super::Game<'_>, batch: &mut horizon_client::hud::H
         let target = s.fight.target.filter(|(_, at)| t.saturating_sub(*at) <= target_timeout).and_then(|(id, _)| target_of(game, id, eye));
         let vertical = options(Module::Speed, &get).on("vertical");
         let speed = feet.map_or(0.0, |p| s.speed.at(t, p, vertical));
+        if s.joined.as_ref().map(|j| &j.0) != place.as_ref() {
+            s.joined = place.map(|p| (p, t));
+        }
+        let session = s.joined.as_ref().map(|j| t.saturating_sub(j.1) / 1000);
         let snap = Snapshot {
             keys,
             cps: [s.clicks[0].per_second(t), s.clicks[1].per_second(t)],
@@ -199,6 +210,9 @@ pub(crate) fn hud(game: &mut super::Game<'_>, batch: &mut horizon_client::hud::H
             speed,
             pos: feet.zip(look).map(|(p, (yaw, _))| (p, yaw, dimension)),
             stats: core::Stats { hits: s.fight.hits, best: s.fight.best, average: s.fight.average_reach() },
+            server,
+            session,
+            recent: s.fight.recent.iter().copied().collect(),
         };
         let fade_ms = options(Module::Keystrokes, &get).number("fade");
         let fade = &mut s.fade;

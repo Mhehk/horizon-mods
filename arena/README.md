@@ -1,4 +1,4 @@
-# Arena HUD — 16.10.1
+# Arena HUD — 16.10.2
 
 Horizon (Rust ile yazılmış Minecraft 26.3) için PvP HUD native modu. Yazar: mihehk. Lisans: MIT.
 
@@ -25,7 +25,7 @@ ekranlarının görüntüleri gelince birebir hale getirilecek.
 | FPS | Saniyedeki kare (kendi sayar) | yazı |
 | Block Overlay | Bakılan bloğun çerçevesi ve yüzleri | çerçeve, renk, kalınlık, dolgu, dolgu rengi |
 
-Dawn'ın listesinde olmayan, bizim eklediğimiz dört modül:
+Dawn'ın listesinde olmayan, bizim eklediğimiz yedi modül:
 
 | Modül | Gösterdiği | Ayarlar |
 | --- | --- | --- |
@@ -33,6 +33,9 @@ Dawn'ın listesinde olmayan, bizim eklediğimiz dört modül:
 | Speed | Saniyedeki blok (son 0,5 sn; ışınlanma sayılmaz) | ondalık, dikey hızı da say, birim |
 | Coordinates | X Y Z, baktığın yön, Nether/Overworld karşılığı | ondalık, yön, diğer boyut |
 | Session Stats | Toplam vuruş, en uzun kombo, ortalama reach | her satır ayrı açılıp kapanır · `/arena stats temizle` sıfırlar |
+| Server Address | Bağlı olduğun sunucu (tek oyunculuda "Singleplayer") | portu göster, ön yazı |
+| Session Time | Bu sunucuya / dünyaya girdiğinden beri geçen süre | ön yazı |
+| Reach History | Son vuruşların mesafesi, en yenisi başta, Reach'in renkleriyle | kaç vuruş (1-10), ondalık, alt alta |
 
 Her HUD modülünde ayrıca: açık/kapalı, arka plan, arka plan rengi, yazı rengi, `[ ]` içinde.
 

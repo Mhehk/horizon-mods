@@ -1,8 +1,9 @@
-// Arena HUD — 16.10.1 (mihehk): the PvP HUD modules, plain Rust. The module
+// Arena HUD — 16.10.2 (mihehk): the PvP HUD modules, plain Rust. The module
 // list is Dawn Client's (dawn.gg/pvp-client): Keystrokes, CPS, Mousestrokes,
 // Reach Display, Combo Display, Hitbox, Toggle Sprint, Armor Status, Potion
-// Effects, Ping, FPS, Block Overlay; and four of ours on top: Target HUD,
-// Speed, Coordinates, Session Stats. Their options follow what Lunar
+// Effects, Ping, FPS, Block Overlay; and seven of ours on top: Target HUD,
+// Speed, Coordinates, Session Stats, Server Address, Session Time, Reach
+// History. Their options follow what Lunar
 // Client's Keystrokes article documents and the usual PvP client layout;
 // Dawn's own settings screens are not public, so where they differ the
 // options here are ours. No code, names or images of Dawn, Feather or Lunar.
@@ -37,9 +38,12 @@ pub enum Module {
     Speed,
     Coordinates,
     Stats,
+    ServerAddress,
+    SessionTime,
+    ReachHistory,
 }
 
-pub const ALL: [Module; 16] = [
+pub const ALL: [Module; 19] = [
     Module::Keystrokes,
     Module::Cps,
     Module::Mousestrokes,
@@ -56,6 +60,9 @@ pub const ALL: [Module; 16] = [
     Module::Speed,
     Module::Coordinates,
     Module::Stats,
+    Module::ServerAddress,
+    Module::SessionTime,
+    Module::ReachHistory,
 ];
 
 impl Module {
@@ -78,6 +85,9 @@ impl Module {
             Module::Speed => "speed",
             Module::Coordinates => "coords",
             Module::Stats => "stats",
+            Module::ServerAddress => "server",
+            Module::SessionTime => "session",
+            Module::ReachHistory => "reachhistory",
         }
     }
 
@@ -99,6 +109,9 @@ impl Module {
             Module::Speed => "Speed",
             Module::Coordinates => "Coordinates",
             Module::Stats => "Session Stats",
+            Module::ServerAddress => "Server Address",
+            Module::SessionTime => "Session Time",
+            Module::ReachHistory => "Reach History",
         }
     }
 
@@ -129,6 +142,9 @@ impl Module {
             Module::Speed => [0.01, 0.11],
             Module::Coordinates => [0.01, 0.16],
             Module::Stats => [0.99, 0.97],
+            Module::ServerAddress => [0.5, 0.01],
+            Module::SessionTime => [0.5, 0.05],
+            Module::ReachHistory => [0.5, 0.75],
             Module::Hitbox | Module::BlockOverlay => [0.0, 0.0],
         }
     }
@@ -189,6 +205,9 @@ impl Module {
                 ("other_dimension", "true", "Nether / Overworld karşılığı"),
             ],
             Module::Stats => &[("show_hits", "true", "toplam vuruş"), ("show_best", "true", "en uzun kombo"), ("show_average", "true", "ortalama reach")],
+            Module::ServerAddress => &[("show_port", "false", "portu da yaz (:25565)"), ("label", "", "önüne yazı, ör. IP:")],
+            Module::SessionTime => &[("label", "", "önüne yazı, ör. Süre:")],
+            Module::ReachHistory => &[("count", "5", "kaç vuruş (1-10)"), ("decimals", "2", "ondalık basamak"), ("vertical", "false", "alt alta")],
         }
     }
 }
@@ -333,7 +352,11 @@ pub struct Fight {
     pub hits: u32,
     pub best: u32,
     reach_sum: f64,
+    /// Reach History: the last `HISTORY` hits' reach, oldest first.
+    pub recent: VecDeque<f64>,
 }
+
+pub const HISTORY: usize = 10;
 
 /// An attack whose target is damaged this soon after counts as a hit.
 pub const CONFIRM: u64 = 500;
@@ -360,6 +383,10 @@ impl Fight {
                 self.hits += 1;
                 self.best = self.best.max(self.combo);
                 self.reach_sum += reach;
+                self.recent.push_back(reach);
+                if self.recent.len() > HISTORY {
+                    self.recent.pop_front();
+                }
             }
         }
     }
@@ -374,6 +401,7 @@ impl Fight {
         self.hits = 0;
         self.best = 0;
         self.reach_sum = 0.0;
+        self.recent.clear();
     }
 
     /// The combo now, ended by `timeout` ms without a hit.
@@ -488,6 +516,31 @@ pub fn other_dimension(dimension: &str, x: f64, z: f64) -> Option<(&'static str,
 
 // ---------------------------------------------------------------- drawing
 
+/// A server address as shown: the port dropped unless asked for
+/// (`play.example.net:25565` → `play.example.net`, `[::1]:25565` → `[::1]`).
+pub fn host(address: &str, show_port: bool) -> String {
+    if show_port {
+        return address.to_owned();
+    }
+    if address.starts_with('[') {
+        return address.split_inclusive(']').next().unwrap_or(address).to_owned();
+    }
+    match address.rsplit_once(':') {
+        Some((h, port)) if !h.contains(':') && !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => h.to_owned(),
+        _ => address.to_owned(),
+    }
+}
+
+/// Seconds as `M:SS`, or `H:MM:SS` from an hour on.
+pub fn clock(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
 /// The last entity hit, for Target HUD.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Target {
@@ -536,6 +589,12 @@ pub struct Snapshot {
     /// Feet position, yaw and dimension id, once in a world.
     pub pos: Option<([f64; 3], f32, String)>,
     pub stats: Stats,
+    /// The server's address; None in single player or the menus.
+    pub server: Option<String>,
+    /// Seconds since joining this server or world.
+    pub session: Option<u64>,
+    /// The last hits' reach, oldest first.
+    pub recent: Vec<f64>,
 }
 
 /// An item id as a short name: `minecraft:diamond_chestplate` → `Diamond Chestplate`.
@@ -565,6 +624,16 @@ fn reach_color(reach: f64) -> Option<u32> {
         Some(0xFFFF55)
     } else {
         Some(0xFF5555)
+    }
+}
+
+/// `text` after the module's `label`, when it has one.
+fn labelled(o: &Options, text: String) -> String {
+    let label = o.text("label");
+    if label.is_empty() {
+        text
+    } else {
+        format!("{label} {text}")
     }
 }
 
@@ -788,6 +857,41 @@ pub fn draw(o: &Options, snap: &Snapshot, at: [f32; 2], fade: &mut dyn FnMut(&'s
             }
             lines(o, at, &rows, measure)
         }
+        Module::ServerAddress => {
+            let shown = snap.server.as_deref().map_or_else(|| "Singleplayer".to_owned(), |a| host(a, o.on("show_port")));
+            lines(o, at, &row(labelled(o, shown)), measure)
+        }
+        Module::SessionTime => {
+            let Some(secs) = snap.session else {
+                return Some((Vec::new(), [measure("0:00:00") + 8.0, 14.0]));
+            };
+            lines(o, at, &row(labelled(o, clock(secs))), measure)
+        }
+        Module::ReachHistory => {
+            let d = o.number("decimals").clamp(0.0, 4.0) as usize;
+            let n = (o.number("count").clamp(1.0, HISTORY as f64)) as usize;
+            let last: Vec<(String, Option<u32>)> =
+                snap.recent.iter().rev().take(n).map(|r| (format!("{r:.d$}"), reach_color(*r))).collect();
+            if last.is_empty() {
+                return Some((Vec::new(), [measure("3.00 3.00 3.00") + 8.0, 14.0]));
+            }
+            if o.on("vertical") {
+                lines(o, at, &last, measure)
+            } else {
+                // One line, newest first; the colours stay per hit, so each
+                // value is drawn on its own after the box.
+                let texts: Vec<&str> = last.iter().map(|r| r.0.as_str()).collect();
+                let (mut out, size) = lines(o, at, &[(texts.join("  "), None)], measure);
+                out.retain(|d| !matches!(d, Draw::Text(..)));
+                let mut x = at[0] + 4.0;
+                let text = o.color("text_color");
+                for (t, rgb) in &last {
+                    out.push(Draw::Text(t.clone(), [x, at[1] + 3.0], rgb.unwrap_or(text), true));
+                    x += measure(t) + measure("  ");
+                }
+                (out, size)
+            }
+        }
         Module::Hitbox | Module::BlockOverlay => return None,
     };
     Some(out)
@@ -919,7 +1023,7 @@ mod tests {
         let none = |_: &str| None;
         let snap = Snapshot { cps: [9, 3], fps: 240, ..Snapshot::default() };
         let mut fade = |_: &'static str, _: bool| 0.0;
-        let text = |m: Module| -> String {
+        let mut text = |m: Module| -> String {
             let o = Options { module: m, get: &none };
             let (d, _) = draw(&o, &snap, [0.0, 0.0], &mut fade, &measure).unwrap();
             d.into_iter().find_map(|d| if let Draw::Text(t, ..) = d { Some(t) } else { None }).unwrap()
@@ -992,6 +1096,30 @@ mod tests {
         assert_eq!(texts, ["Rakip", "HP 5.0 / 20", "Armor 12  2.8 m", "Iron Sword"]);
         assert!(draws.iter().any(|d| matches!(d, Draw::Text(t, _, 0xFF5555, _) if t.starts_with("HP"))), "a quarter is red");
         assert_eq!(size[1], 4.0 * 10.0 + 4.0 + 5.0);
+    }
+
+    #[test]
+    fn addresses_clocks_and_reach_history() {
+        assert_eq!(host("play.example.net:25565", false), "play.example.net");
+        assert_eq!(host("play.example.net:25565", true), "play.example.net:25565");
+        assert_eq!(host("[::1]:25565", false), "[::1]");
+        assert_eq!(host("2001:db8::1", false), "2001:db8::1", "a bare IPv6 keeps its colons");
+        assert_eq!(clock(59), "0:59");
+        assert_eq!(clock(3 * 3600 + 5 * 60 + 7), "3:05:07");
+        let mut f = Fight::default();
+        for i in 0..12 {
+            f.attack(3, i as f64, i * 1000);
+            f.damaged(3, Some(1), i * 1000 + 10);
+        }
+        assert_eq!(f.recent.len(), HISTORY);
+        assert_eq!(f.recent.front(), Some(&2.0));
+        let none = |_: &str| None;
+        let o = Options { module: Module::ReachHistory, get: &none };
+        let snap = Snapshot { recent: vec![2.5, 3.1, 3.6], ..Snapshot::default() };
+        let mut fade = |_: &'static str, _: bool| 0.0;
+        let (draws, _) = draw(&o, &snap, [0.0, 0.0], &mut fade, &measure).unwrap();
+        let texts: Vec<(String, u32)> = draws.into_iter().filter_map(|d| if let Draw::Text(t, _, c, _) = d { Some((t, c)) } else { None }).collect();
+        assert_eq!(texts, [("3.60".into(), 0xFF5555), ("3.10".into(), 0xFFFF55), ("2.50".into(), 0xFFFFFF)], "newest first, coloured");
     }
 
     #[test]

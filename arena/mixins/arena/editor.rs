@@ -1,4 +1,4 @@
-// Arena HUD — 16.10.1 (mihehk): the HUD editor (Right Alt). Every HUD
+// Arena HUD — 16.10.2 (mihehk): the HUD editor (Right Alt). Every HUD
 // module shows in a box; drag one to move it, and it snaps to the screen's
 // edges and centre and to the other modules' edges; a right click puts it
 // back where it started. The list on the left turns modules on and off.

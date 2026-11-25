@@ -508,7 +508,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::eksen_magic::Block;
+    use super::super::eksen_magic::Block;
     use std::collections::HashMap;
 
     struct World(HashMap<Pos, Block>);
