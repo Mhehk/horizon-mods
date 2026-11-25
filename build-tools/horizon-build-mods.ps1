@@ -22,6 +22,7 @@ $bundles = @{
   olderservers   = "$c\OlderServers\horizon\mixins\olderservers"
   healthindicators = "$c\HealthIndicators\horizon\mixins\healthindicators"
   opsec          = "$c\OpSec\horizon\mixins\opsec"
+  arena          = "$c\ArenaHud\mixins\arena"
 }
 $mods = "$bt\build-mods"
 if (Test-Path $mods) { Remove-Item -Recurse -Force $mods }

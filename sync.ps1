@@ -18,6 +18,8 @@ $ports = [ordered]@{
   'olderservers'       = @{ from = "$c\OlderServers"; items = @('horizon') }
   'healthindicators'   = @{ from = "$c\HealthIndicators"; items = @('README.md', 'horizon') }
   'opsec'              = @{ from = "$c\OpSec"; items = @('LICENSE', 'README.md', 'horizon') }
+  'arena'              = @{ from = "$c\ArenaHud"; items = @('LICENSE', 'README.md', 'compatibility.json', 'mixins') }
+  'hesaplar'           = @{ from = "$c\Hesaplar"; items = @('LICENSE', 'README.md', 'compatibility.json', 'mixins') }
 }
 
 foreach ($name in $ports.Keys) {

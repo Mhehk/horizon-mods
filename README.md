@@ -19,6 +19,8 @@ değiştiği için orada çalışmazlar.
 | `olderservers` | Older Servers | mhv1 | mihehk |
 | `healthindicators` | Health Indicators | mhv1 | AdyTech99, LGPL-3.0 |
 | `opsec` | OpSec (kaynak paketi koruması) | 16.10.1 | Aurick, GPL-3.0-only |
+| `arena` | Arena HUD (PvP HUD: Keystrokes, CPS, Reach, Combo, Hitbox, Target HUD …) | 16.10.1 | mihehk, MIT |
+| `hesaplar` | Hesaplar (ana menüde Microsoft hesabı değiştirme) | 16.10.1 | mihehk, MIT |
 
 Voice Chat, Simple Voice Chat'in kodunu veya resimlerini **içermez**; görselleri oyuncunun
 kendi SVC jar'ından çalışma anında okur (`voicechat/KURULUM.md`).
