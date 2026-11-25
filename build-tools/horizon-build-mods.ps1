@@ -3,7 +3,7 @@
 # stage (so cargo's incremental cache survives), 3) cargo build --profile fast.
 # Output exe: .build-tools\eksen-target\fast\horizon-client.exe   Log: .build-tools\eksen-build.log
 $ErrorActionPreference = 'Stop'
-$c = 'C:\Users\Murat\Desktop\cmod'
+$c = Split-Path $PSScriptRoot -Parent   # cmod = the folder that holds .build-tools
 $bt = "$c\.build-tools"
 $r = "$env:APPDATA\horizon-launcher\rust\1.99.1-x86_64-pc-windows-gnu"
 $env:PATH = "$r\bin;$r\mingw64\bin;$env:PATH"
@@ -21,6 +21,7 @@ $bundles = @{
   voicechat      = "$c\VoiceChat\mixins\voicechat"
   olderservers   = "$c\OlderServers\horizon\mixins\olderservers"
   healthindicators = "$c\HealthIndicators\horizon\mixins\healthindicators"
+  opsec          = "$c\OpSec\horizon\mixins\opsec"
 }
 $mods = "$bt\build-mods"
 if (Test-Path $mods) { Remove-Item -Recurse -Force $mods }

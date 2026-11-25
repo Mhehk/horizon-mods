@@ -17,6 +17,7 @@ $ports = [ordered]@{
   'voicechat'          = @{ from = "$c\VoiceChat"; items = @('LICENSE', 'README.md', 'KURULUM.md', 'compatibility.json', 'horizon-mod.toml', 'assets', 'dist', 'mixins', 'tools') }
   'olderservers'       = @{ from = "$c\OlderServers"; items = @('horizon') }
   'healthindicators'   = @{ from = "$c\HealthIndicators"; items = @('README.md', 'horizon') }
+  'opsec'              = @{ from = "$c\OpSec"; items = @('LICENSE', 'README.md', 'horizon') }
 }
 
 foreach ($name in $ports.Keys) {

@@ -18,9 +18,18 @@ değiştiği için orada çalışmazlar.
 | `voicechat` | Voice Chat (Simple Voice Chat uyumlu) | mhv2 | Nirokx & BnCatt, MIT |
 | `olderservers` | Older Servers | mhv1 | mihehk |
 | `healthindicators` | Health Indicators | mhv1 | AdyTech99, LGPL-3.0 |
+| `opsec` | OpSec (kaynak paketi koruması) | 16.10.1 | Aurick, GPL-3.0-only |
 
 Voice Chat, Simple Voice Chat'in kodunu veya resimlerini **içermez**; görselleri oyuncunun
 kendi SVC jar'ından çalışma anında okur (`voicechat/KURULUM.md`).
+
+## Sürümleme
+
+Yukarıdaki modlar eski `mhvN` sürümlerinde kalır. Bundan sonra yapılan her mod
+**16.10.1** ile başlar:
+
+- Hata düzeltmesi (bug fix) gibi küçük değişikliklerde sona bir alt numara eklenir: `16.10.1.2`, `16.10.1.3` …
+- Büyük bir değişiklikte orta numara artar: `16.10.1` → `16.10.2`.
 
 ## Derleme
 

@@ -133,9 +133,14 @@ const NAME_UNIT: f64 = 0.025;
 /// half block vanilla lifts it, less the eye height (1.62).
 const NAME_ABOVE_EYES: f64 = 0.68;
 
+/// The icon's side in name tag text pixels: Simple Voice Chat draws a
+/// 10 x 10 quad, from a pixel above the text's top to the bottom of its
+/// 9 pixel line, so it sits level with the name.
+const NAME_ICON: f64 = 10.0;
+
 /// `RenderEvents.renderPlayerIcon`: each `(eye, name width, icon)` drawn as
-/// an 8 pixel glyph right of the name tag (half its width and 2 more, a pixel
-/// up), as the camera sees it; the farthest first.
+/// a 10 pixel square right of the name tag (half its width rounded down, and
+/// 2 more; a pixel up), as the camera sees it; the farthest first.
 pub fn name_icons(camera: &Camera, size: [f32; 2], tags: &[([f64; 3], f32, &str)]) -> Vec<crate::ui::Draw> {
     let (_, r, u) = basis(camera.yaw, camera.pitch);
     let mut placed: Vec<(f64, crate::ui::Draw)> = tags
@@ -151,9 +156,10 @@ pub fn name_icons(camera: &Camera, size: [f32; 2], tags: &[([f64; 3], f32, &str)
                 let k = NAME_UNIT;
                 [anchor[0] + r[0] * tx * k - u[0] * ty * k, anchor[1] + r[1] * tx * k - u[1] * ty * k, anchor[2] + r[2] * tx * k - u[2] * ty * k]
             };
-            let x0 = f64::from(*width) / 2.0 + 2.0;
+            // `font.width(name) / 2 + 2`, an integer division as in Simple Voice Chat.
+            let x0 = (f64::from(*width) / 2.0).floor() + 2.0;
             let a = project(camera, at(x0, -1.0), size)?;
-            let b = project(camera, at(x0 + 8.0, 7.0), size)?;
+            let b = project(camera, at(x0 + NAME_ICON, NAME_ICON - 1.0), size)?;
             let rect = [a[0].min(b[0]), a[1].min(b[1]), (b[0] - a[0]).abs(), (b[1] - a[1]).abs()];
             let on_screen = rect[0] + rect[2] >= 0.0 && rect[0] <= size[0] && rect[1] + rect[3] >= 0.0 && rect[1] <= size[1];
             (on_screen && rect[2] >= 1.0).then(|| (distance, crate::screens::svc(icon, [0.0, 0.0, 16.0, 16.0], rect)))
@@ -196,6 +202,24 @@ mod tests {
         // The farther one first.
         let two = talk_icons(&camera, size, &[([0.0, 65.62, 4.0], false, false), ([1.0, 65.62, 9.0], false, true)]);
         assert!(matches!(&two[0], Draw::Sprite { name, .. } if name == Icon::Whisper.sprite()));
+    }
+
+    #[test]
+    fn a_name_icon_sits_square_and_level_right_of_the_name() {
+        let camera = Camera { pos: [0.0, 65.62, 0.0], yaw: 0.0, pitch: 0.0, fov: 70.0 };
+        let size = [400.0, 200.0];
+        let eye = [0.0, 65.62, 5.0];
+        let icons = name_icons(&camera, size, &[(eye, 41.0, "icons/speaker.png")]);
+        let [Draw::Sprite { dst, .. }] = icons.as_slice() else { panic!("{icons:?}") };
+        // Square, as Simple Voice Chat's 10 x 10 quad.
+        assert!((dst[2] - dst[3]).abs() < 0.01, "{dst:?}");
+        // Wholly right of the name: 41 / 2 rounded down, and 2 more.
+        let x0 = project(&camera, [eye[0] - 22.0 * NAME_UNIT, eye[1] + NAME_ABOVE_EYES, eye[2]], size).unwrap();
+        assert!((dst[0] - x0[0]).abs() < 0.01, "{dst:?} {x0:?}");
+        // Level with the name's 9 pixel line: from a pixel above its top to its bottom.
+        let top = project(&camera, [eye[0], eye[1] + NAME_ABOVE_EYES, eye[2]], size).unwrap();
+        let bottom = project(&camera, [eye[0], eye[1] + NAME_ABOVE_EYES - 9.0 * NAME_UNIT, eye[2]], size).unwrap();
+        assert!(dst[1] < top[1] && (dst[1] + dst[3] - bottom[1]).abs() < 0.01, "{dst:?} {top:?} {bottom:?}");
     }
 
     #[test]
