@@ -1,7 +1,7 @@
 // Packages mixins/eksen as a source-only .hnmod (deterministic: fixed dates,
 // sorted entries, LF line endings).
 //   node tools/package.mjs [--install]
-// Output: target/eksen-mhv1.hnmod; --install also copies it to
+// Output: target/eksen-16.10.2.hnmod; --install also copies it to
 // %APPDATA%\horizon\horizon-native-mods\eksen.hnmod.
 import fs from "node:fs";
 import path from "node:path";
@@ -76,7 +76,7 @@ const zip = Buffer.concat([...locals, cd, end]);
 
 const outDir = path.join(root, "target");
 fs.mkdirSync(outDir, { recursive: true });
-const out = path.join(outDir, "eksen-mhv1.hnmod");
+const out = path.join(outDir, "eksen-16.10.2.hnmod");
 fs.writeFileSync(out, zip);
 const result = { file: out, files: files.length, size: zip.length, sha256: crypto.createHash("sha256").update(zip).digest("hex") };
 if (process.argv.includes("--install")) {

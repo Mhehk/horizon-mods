@@ -4,10 +4,27 @@ fn eksen_world(game: &crate::game::Game<'_>, primitives: &mut WorldPrimitives) {
     if !game.native_on(m::ID) {
         return;
     }
-    let (pos1, pos2, brush) = {
+    let (pos1, pos2, brush, set) = {
         let s = m::state();
-        (s.pos1, s.pos2, s.brush.as_ref().map(|b| b.radius))
+        let set = if s.set.len() <= m::DRAW_MAX { Ok(s.set.iter().copied().collect::<Vec<_>>()) } else { Err(crate::game::eksen_magic::bounds(&s.set)) };
+        (s.pos1, s.pos2, s.brush.as_ref().map(|b| b.radius), set)
     };
+    // A Magic Select set: each block, or past `DRAW_MAX` the box around them.
+    match set {
+        Ok(blocks) => {
+            for p in blocks {
+                let lo = [p[0] as f64 - 0.005, p[1] as f64 - 0.005, p[2] as f64 - 0.005];
+                let hi = [p[0] as f64 + 1.005, p[1] as f64 + 1.005, p[2] as f64 + 1.005];
+                primitives.filled_box(lo, hi, 0x2055FFFF);
+            }
+        }
+        Err(Some((a, b))) => {
+            let lo = [a[0] as f64 - 0.01, a[1] as f64 - 0.01, a[2] as f64 - 0.01];
+            let hi = [b[0] as f64 + 1.01, b[1] as f64 + 1.01, b[2] as f64 + 1.01];
+            primitives.box_outline(lo, hi, 0xFF55FFFF, 2.0);
+        }
+        Err(None) => {}
+    }
     let block = |p: m::Pos, grow: f64| {
         (
             [p[0] as f64 - grow, p[1] as f64 - grow, p[2] as f64 - grow],
@@ -36,6 +53,23 @@ fn eksen_world(game: &crate::game::Game<'_>, primitives: &mut WorldPrimitives) {
     if let Some(b) = pos2 {
         let (lo, hi) = block(b, 0.02);
         primitives.box_outline(lo, hi, 0xFF5599FF, 3.0).through_walls();
+    }
+    // The editor screen: the block under the pointer and the stroke drawn.
+    let (hover, stroke) = {
+        let mut s = m::state();
+        let open = s.ui.as_ref().is_some_and(|u| u.open);
+        let hover = if open { s.ui().hover } else { None };
+        let e = s.editor();
+        let stroke: Vec<m::Pos> = if open && e.held { e.stroke.iter().take(m::DRAW_MAX).copied().collect() } else { Vec::new() };
+        (hover, stroke)
+    };
+    if let Some((p, _)) = hover {
+        let (lo, hi) = block(p, 0.01);
+        primitives.box_outline(lo, hi, 0xFFFFFFFF, 2.0);
+    }
+    for p in stroke {
+        let (lo, hi) = block(p, 0.005);
+        primitives.filled_box(lo, hi, 0x30FFD040);
     }
     if let Some(r) = brush {
         if let Some(hit) = game.native_raycast(m::REACH) {

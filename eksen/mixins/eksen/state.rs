@@ -1,22 +1,132 @@
-// Eksen — mhv1 (mihehk): a building editor for Horizon. This module holds the
+// Eksen — 16.10.2 (mihehk): a building editor for Horizon. This module holds the
 // selection, the clipboard, the brush and the command queue, and turns editor
 // actions into vanilla commands (`fill`, `clone`) the server runs. The hooks
 // in this bundle only read and write this state and call the game's helpers.
-use std::collections::VecDeque;
+// The selection is a box (two corners) or a set of blocks (Magic Select,
+// `eksen_magic`).
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Mutex, MutexGuard};
+
+use super::eksen_magic as magic;
 
 pub const ID: &str = "eksen";
 pub const NAME: &str = "Eksen";
-pub const VERSION: &str = "mhv1";
-pub const DESCRIPTION: &str = "Yapı editörü: uzaktan seçim, doldur, değiştir, kopyala/yapıştır, çoğalt, fırça. /eksen yardim";
+pub const VERSION: &str = "16.10.2";
+pub const DESCRIPTION: &str = "Yapı editörü: uzaktan seçim, Magic Select, doldur, değiştir, kopyala/yapıştır, çoğalt, fırça. /eksen yardim";
 
 /// Mod keys: name, label, default key.
-pub const KEYS: [(&str, &str, &str); 4] = [
+pub const KEYS: [(&str, &str, &str); 9] = [
     ("pos1", "Eksen: 1. köşe (bakılan blok)", "key.keyboard.j"),
     ("pos2", "Eksen: 2. köşe (bakılan blok)", "key.keyboard.k"),
     ("clear", "Eksen: seçimi temizle", "key.keyboard.u"),
     ("brush", "Eksen: fırça (basılı tut)", "key.keyboard.h"),
+    ("magic", "Eksen: Magic Select (basılı tutup blokların üstünden geç)", "key.keyboard.g"),
+    ("tool", "Eksen: etkin araç (basılı tutup çiz)", "key.keyboard.b"),
+    ("tool2", "Eksen: etkin aracın ikinci işlemi (sil, alçalt …)", "key.keyboard.n"),
+    ("replace", "Eksen: değiştirme modu aç/kapat", "key.keyboard.r"),
+    ("editor", "Eksen: editör ekranı (aç/kapat)", "key.keyboard.right.shift"),
 ];
+/// `KEYS` index of the editor screen's key.
+pub const KEY_EDITOR: usize = 8;
+/// `KEYS` index of Magic Select's key.
+pub const KEY_MAGIC: usize = 4;
+
+/// The most blocks of a set selection drawn one by one; past it the set is
+/// drawn as its bounding box.
+pub const DRAW_MAX: usize = 2048;
+
+/// The world's blocks, for Magic Select, the tools and undo.
+///
+/// Reading is the game's own: `game.world.block(x, y, z)` and
+/// `game.res.facts().is_air(state)` are what BetterHitreg (render.rs) uses,
+/// and `game.world.chunks` keyed by chunk (x, z) is what HatLayers checks.
+/// Horizon's source is not public, so the rest of what a state says is
+/// guessed in the `horizon_*` functions just below, the only lines to fix
+/// if the first build disagrees.
+pub struct GameBlocks<'g, 'a>(pub &'g super::Game<'a>);
+
+impl magic::Blocks for GameBlocks<'_, '_> {
+    fn block(&self, at: magic::Pos) -> Option<magic::Block> {
+        let game = self.0;
+        if !game.world.chunks.contains_key(&(at[0] >> 4, at[2] >> 4)) {
+            return None;
+        }
+        let state = game.world.block(at[0], at[1], at[2]);
+        if game.res.facts().is_air(state) {
+            return Some(magic::Block { id: "minecraft:air".into(), state: String::new(), solid: false });
+        }
+        // UNVERIFIED (Horizon guesses, see below): the state as a command
+        // writes it (`minecraft:oak_stairs[facing=east,half=bottom]`), and
+        // whether it is solid (stone, glass panes; not flowers or water).
+        let text: String = game.res.facts().state_string(state);
+        let solid: bool = game.res.facts().is_solid(state);
+        let (id, props) = match text.split_once('[') {
+            Some((id, rest)) => (id.to_owned(), rest.trim_end_matches(']').to_owned()),
+            None => (text, String::new()),
+        };
+        Some(magic::Block { id, state: props, solid })
+    }
+
+    fn state_id(&self, block: &str) -> Option<u32> {
+        horizon_state_id(self.0, block)
+    }
+
+    fn dimension(&self) -> Option<String> {
+        let d = self.0.native_player()?.dimension;
+        Some(if d.contains(':') { d.to_owned() } else { format!("minecraft:{d}") })
+    }
+}
+
+// ---- Horizon guesses (UNVERIFIED: Horizon's source is private) ----------
+// Four calls in all: `state_string` and `is_solid` in `block` above, and
+// `parse_state` / `PROTOCOL_VERSION` below. If the first build fails, these
+// are the lines to fix; nothing else depends on how Horizon names them.
+
+/// The global state id (`Block.BLOCK_STATE_REGISTRY`) of a block string,
+/// as AxiomPaper reads ids; None when the game does not know it.
+fn horizon_state_id(game: &super::Game<'_>, block: &str) -> Option<u32> {
+    let block = if block.contains(':') { block.to_owned() } else { format!("minecraft:{block}") };
+    game.res.facts().parse_state(&block).map(|s| u32::from(s.id()))
+}
+
+/// The camera the world was last drawn from: position, yaw, pitch and
+/// vertical field of view (VoiceChat's world.rs reads the same field).
+pub fn camera(game: &super::Game<'_>) -> Option<([f64; 3], f32, f32, f32)> {
+    game.locator_camera
+}
+
+/// The block under the editor screen's pointer at `mouse` (GUI pixels on a
+/// `size` screen) and the face it shows, and the ray's start and direction.
+pub fn pointer(game: &super::Game<'_>, mouse: [f32; 2], size: [f32; 2]) -> Option<(Option<(Pos, Pos)>, [f64; 3], [f64; 3])> {
+    let (pos, yaw, pitch, fov) = camera(game)?;
+    let dir = super::eksen_ui::mouse_ray(yaw, pitch, fov, mouse, size);
+    let hit = super::eksen_ui::ray(&GameBlocks(game), pos, dir, f64::from(REACH));
+    Some((hit, pos, dir))
+}
+
+/// Runs `/eksen <words>` for the editor screen: the player as the chat
+/// command sees them, but the block "looked at" is the one under the pointer.
+pub fn run_from_screen(game: &super::Game<'_>, words: &[String]) -> Vec<String> {
+    let player = game.native_player();
+    let hover = state().ui.as_ref().and_then(|u| u.hover);
+    let world = GameBlocks(game);
+    let eye = camera(game).map(|c| c.0).or_else(|| player.as_ref().map(|p| [p.x, p.y + 1.62, p.z]));
+    let ctx = Ctx {
+        feet: player.as_ref().map(|p| [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]),
+        look: player.as_ref().map(|p| look_dir(p.yaw, p.pitch)),
+        hit: hover.map(|h| h.0).or_else(|| game.native_raycast(REACH).map(|h| [h.block_x, h.block_y, h.block_z])),
+        eye,
+        view: player.as_ref().map(|p| super::eksen_editor::view(p.yaw, p.pitch)),
+        world: &world,
+    };
+    let args: Vec<&str> = words.iter().map(String::as_str).collect();
+    run(&args, &ctx)
+}
+
+/// The protocol version of the game (what the server was joined with).
+pub fn protocol_version() -> i32 {
+    horizon_protocol::PROTOCOL_VERSION as i32
+}
 
 /// How far the editor reaches along the view, in blocks.
 pub const REACH: f32 = 256.0;
@@ -85,6 +195,16 @@ pub struct Brush {
 pub struct State {
     pub pos1: Option<Pos>,
     pub pos2: Option<Pos>,
+    /// A selection of single blocks (Magic Select); when there is one, the
+    /// corners are unset.
+    pub set: BTreeSet<Pos>,
+    /// Magic Select's options; None: the defaults.
+    pub magic: Option<magic::Options>,
+    /// How the next selection joins this one.
+    pub op: magic::Op,
+    /// The blocks passed over while the Magic Select key is held.
+    pub magic_seeds: Vec<Pos>,
+    pub magic_held: bool,
     pub clipboard: Option<Region>,
     pub brush: Option<Brush>,
     pub brush_held: bool,
@@ -92,11 +212,26 @@ pub struct State {
     pub queue: VecDeque<String>,
     /// Commands of the running job, to say when it is done.
     pub job: usize,
+    /// The tools, history, symmetry and capabilities (`eksen_editor`),
+    /// made on first use.
+    pub editor: Option<Box<super::eksen_editor::Editor>>,
+    /// The server's AxiomPaper plugin (`eksen_axiom`), made on first use.
+    pub axiom: Option<Box<super::eksen_axiom::Axiom>>,
+    /// The editor screen (Right Shift, `eksen_ui`), made on first use.
+    pub ui: Option<Box<super::eksen_ui::Ui>>,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
+    editor: None,
+    axiom: None,
+    ui: None,
     pos1: None,
     pos2: None,
+    set: BTreeSet::new(),
+    magic: None,
+    op: magic::Op::Add,
+    magic_seeds: Vec::new(),
+    magic_held: false,
     clipboard: None,
     brush: None,
     brush_held: false,
@@ -110,13 +245,18 @@ pub fn state() -> MutexGuard<'static, State> {
 }
 
 /// What a command knows about the player when it runs.
-pub struct Ctx {
+pub struct Ctx<'w> {
     /// The block at the player's feet.
     pub feet: Option<Pos>,
     /// The axis the player looks along most (a unit step).
     pub look: Option<Pos>,
     /// The block the player looks at, within `REACH`.
     pub hit: Option<Pos>,
+    /// The eyes and the view direction (a unit vector).
+    pub eye: Option<[f64; 3]>,
+    pub view: Option<[f64; 3]>,
+    /// The world's blocks (see `GameBlocks`).
+    pub world: &'w dyn magic::Blocks,
 }
 
 /// The axis the player looks along most: yaw 0 faces south (+z), 90 west
@@ -289,9 +429,12 @@ fn block_arg(word: Option<&&str>) -> Result<String, String> {
     Ok((*w).to_owned())
 }
 
-const HELP: [&str; 14] = [
-    "Eksen — mhv1 komutları (OP / hile izni gerekir):",
+const HELP: [&str; 23] = [
+    "Eksen — 16.10.2 komutları (OP / hile izni ya da sunucuda AxiomPaper gerekir):",
     "J / K: bakılan bloğu 1. / 2. köşe yap · U: seçimi temizle · H: fırça (basılı tut)",
+    "G: Magic Select — basılı tutup bloklara bak, bırakınca aynı türden bitişik bloklar seçilir",
+    "/eksen sihirli — ayarları göster · karsilastir <blok|durum|kati|herhangi> · limit <n> · menzil <1-8>",
+    "/eksen sihirli yuzey|yukari|asagi|yatay|koseler — aç/kapat · /eksen islem <ekle|cikar|yerine|kesisim>",
     "/eksen pos1 | pos2 — ayağının altındaki blok",
     "/eksen doldur <blok> — seçimi doldur",
     "/eksen degistir <eski> <yeni> — seçimde bloğu değiştir",
@@ -303,18 +446,152 @@ const HELP: [&str; 14] = [
     "/eksen kaydir <adet> [yön] — seçimi taşı (eskisi havaya döner)",
     "/eksen firca <yarıçap> <blok> [sadece <blok>] · /eksen firca kapat",
     "/eksen secim — seçimi göster · /eksen durdur — kuyruğu boşalt",
-    "Tuşlar Options > Mods > Eksen'den değiştirilebilir. Geri alma yok: önce yedek al.",
+    "Araçlar: /eksen arac [ad] · /eksen ayar <ayar> [değer] · /eksen blok <blok> · B basılı tut: araç, N: ikinci işlem",
+    "Yapı araçları: tasi|klon <x y z> [adet] · sur <adet> · uzat|kisalt · silbagli · cevir · aynala · bayrak koru|hava",
+    "Simetri: /eksen simetri nokta|merkez|aynala|cevir|kaldir · Geri al: Ctrl+Z / Ctrl+Y (/eksen geri, ileri)",
+    "Yetenekler: /eksen yetenek [ad] (R: değiştirme modu) · uçuş ve araç kutusu: /eksen ucus <hiz|yon|ivme|menzil|sivi|parlaklik> <değer>",
+    "Sağ Shift: editör ekranı — fare serbest, solda araçlar/yapı/yetenekler/seçim, sağda aracın ayarları, ortada tıkla: aracı kullan",
+    "/eksen axiom [ac|kapat|surum <protokol>] — sunucuda AxiomPaper varsa düzenlemeler eklentinin yolundan gider (OP gerekmez)",
+    "Tuşlar Options > Mods > Eksen'den değiştirilebilir. Geri alma yalnızca araçların değişikliklerinde çalışır.",
 ];
 
 impl State {
     fn selection(&self) -> Result<Region, String> {
+        if !self.set.is_empty() {
+            return Err("Bu işlem kutu seçimi ister: Magic Select seçimi için doldur, sil veya degistir kullan.".into());
+        }
         match (self.pos1, self.pos2) {
             (Some(a), Some(b)) => Ok(Region::new(a, b)),
             _ => Err("Önce iki köşe seç (J ve K, ya da /eksen pos1, pos2).".into()),
         }
     }
 
-    fn enqueue(&mut self, cmds: Vec<String>) -> Result<usize, String> {
+    /// What a fill covers: the set's rows, or the box split to fit the limit.
+    fn targets(&self) -> Result<Vec<Region>, String> {
+        if self.set.is_empty() {
+            return Ok(pieces(self.selection()?));
+        }
+        Ok(magic::runs(&self.set).into_iter().map(|(a, b)| Region::new(a, b)).collect())
+    }
+
+    /// A corner set by key or command: a box selection replaces a set.
+    pub fn set_corner(&mut self, which: u8, p: Pos) {
+        self.set.clear();
+        if which == 1 {
+            self.pos1 = Some(p);
+        } else {
+            self.pos2 = Some(p);
+        }
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.pos1 = None;
+        self.pos2 = None;
+        self.set.clear();
+    }
+
+    /// The Magic Select key released: select from the blocks passed over and
+    /// join the result by the current operation; the chat line to show.
+    pub fn finish_magic(&mut self, world: &dyn magic::Blocks) -> String {
+        self.magic_held = false;
+        let seeds = std::mem::take(&mut self.magic_seeds);
+        if seeds.is_empty() {
+            return format!("{PREFIX}Menzilde blok yok.");
+        }
+        if world.block(seeds[0]).is_none() {
+            return format!("{PREFIX}Magic Select bu Horizon sürümünde blokları okuyamıyor (dünya okuma bağlantısı henüz yok).");
+        }
+        let options = self.magic.clone().unwrap_or_default();
+        let found = magic::select(world, &seeds, &options);
+        let n = found.len();
+        if self.set.is_empty() {
+            // A box selection is not mixed with a set: the set starts anew.
+            self.pos1 = None;
+            self.pos2 = None;
+        }
+        self.op.apply(&mut self.set, found);
+        let cut = if n >= options.limit { " (limite ulaşıldı)" } else { "" };
+        format!("{PREFIX}Magic Select: {n} blok{cut} · {} · seçim {} blok", self.op.name(), self.set.len())
+    }
+
+    fn magic_lines(&self) -> Vec<String> {
+        let o = self.magic.clone().unwrap_or_default();
+        let on = |b: bool| if b { "açık" } else { "kapalı" };
+        vec![
+            format!("{PREFIX}Magic Select ayarları · işlem: {}", self.op.name()),
+            format!(
+                "karşılaştır {} · limit {} · menzil {} · yüzey {} · yukarı {} · aşağı {} · yatay {} · köşeler {}",
+                o.compare.name(),
+                o.limit,
+                o.range,
+                on(o.surface_only),
+                on(o.up),
+                on(o.down),
+                on(o.horizontal),
+                on(o.corners)
+            ),
+        ]
+    }
+
+    /// `/eksen sihirli <option> [value]`.
+    fn magic_option(&mut self, args: &[&str]) -> Result<Vec<String>, String> {
+        let mut o = self.magic.clone().unwrap_or_default();
+        match args.first().copied() {
+            None => return Ok(self.magic_lines()),
+            Some("karsilastir" | "karşılaştır" | "compare") => {
+                let w = args.get(1).ok_or("Mod gerekli: blok, durum, kati veya herhangi.")?;
+                o.compare = magic::Compare::parse(w).ok_or_else(|| format!("Bilinmeyen mod: {w}"))?;
+            }
+            Some("limit") => {
+                o.limit = args
+                    .get(1)
+                    .and_then(|w| w.parse().ok())
+                    .filter(|n| *n > 0)
+                    .ok_or("Limit pozitif bir sayı olmalı, ör. /eksen sihirli limit 100000")?;
+            }
+            Some("menzil" | "range") => {
+                o.range = args
+                    .get(1)
+                    .and_then(|w| w.parse().ok())
+                    .filter(|n| (1..=magic::RANGE_MAX).contains(n))
+                    .ok_or(format!("Menzil 1 ile {} arasında olmalı.", magic::RANGE_MAX))?;
+            }
+            Some(w @ ("yuzey" | "yüzey" | "surface" | "yukari" | "yukarı" | "up" | "asagi" | "aşağı" | "down" | "yatay" | "horizontal" | "koseler" | "köşeler" | "corners")) => {
+                let flag = match w {
+                    "yuzey" | "yüzey" | "surface" => &mut o.surface_only,
+                    "yukari" | "yukarı" | "up" => &mut o.up,
+                    "asagi" | "aşağı" | "down" => &mut o.down,
+                    "yatay" | "horizontal" => &mut o.horizontal,
+                    _ => &mut o.corners,
+                };
+                *flag = !*flag;
+                if o.corners && !o.horizontal {
+                    o.corners = false;
+                }
+            }
+            Some("sifirla" | "sıfırla" | "reset") => o = magic::Options::default(),
+            Some(w) => return Err(format!("Bilinmeyen ayar: {w}. /eksen yardim")),
+        }
+        self.magic = Some(o);
+        Ok(self.magic_lines())
+    }
+
+    /// The editor, made on first use.
+    pub fn editor(&mut self) -> &mut super::eksen_editor::Editor {
+        self.editor.get_or_insert_with(Default::default)
+    }
+
+    /// The AxiomPaper link, made on first use.
+    pub fn axiom(&mut self) -> &mut super::eksen_axiom::Axiom {
+        self.axiom.get_or_insert_with(Default::default)
+    }
+
+    /// The editor screen, made on first use.
+    pub fn ui(&mut self) -> &mut super::eksen_ui::Ui {
+        self.ui.get_or_insert_with(Default::default)
+    }
+
+    pub fn enqueue(&mut self, cmds: Vec<String>) -> Result<usize, String> {
         if self.queue.len() + cmds.len() > QUEUE_MAX {
             return Err(format!(
                 "Çok büyük: {} komut gerekir (sınır {QUEUE_MAX}). Seçimi küçült.",
@@ -338,6 +615,25 @@ impl State {
     /// Lines for the HUD box; empty when the editor is idle.
     pub fn hud_lines(&self) -> Vec<String> {
         let mut out = Vec::new();
+        if !self.set.is_empty() {
+            out.push(format!("Seçim: {} blok (Magic Select)", self.set.len()));
+        }
+        if self.magic_held {
+            out.push(format!("Magic Select: {} blok türü", self.magic_seeds.len()));
+        }
+        if let Some(e) = &self.editor {
+            out.push(format!("Araç: {} · blok {}", e.tool_name(), e.active.trim_start_matches("minecraft:")));
+            if e.held {
+                out.push(format!("Çizim: {} blok", e.stroke.len()));
+            }
+            if e.symmetry.on() {
+                out.push("Simetri: açık".into());
+            }
+            let speed = e.abilities.flight_speed;
+            if speed != 100 {
+                out.push(format!("Uçuş hızı: %{speed}"));
+            }
+        }
         match (self.pos1, self.pos2) {
             (Some(a), Some(b)) => out.push(format!("Seçim: {}", fmt_size(&Region::new(a, b)))),
             (Some(_), None) | (None, Some(_)) => out.push("Seçim: bir köşe daha".into()),
@@ -399,12 +695,18 @@ fn run_in(st: &mut State, args: &[&str], ctx: &Ctx) -> Result<Vec<String>, Strin
         "pos1" | "pos2" => {
             let p = ctx.feet.ok_or("Oyuncu bulunamadı.")?;
             let which = if sub == "pos1" { 1 } else { 2 };
-            if which == 1 {
-                st.pos1 = Some(p);
-            } else {
-                st.pos2 = Some(p);
-            }
+            st.set_corner(which, p);
             Ok(vec![st.describe(which, p)])
+        }
+        "sihirli" | "magic" => st.magic_option(&args[1..]),
+        "islem" | "işlem" | "op" => {
+            let w = args.get(1).ok_or("İşlem gerekli: ekle, cikar, yerine veya kesisim.")?;
+            st.op = magic::Op::parse(w).ok_or_else(|| format!("Bilinmeyen işlem: {w}"))?;
+            Ok(vec![format!("{PREFIX}Sonraki seçim işlemi: {}.", st.op.name())])
+        }
+        "secim" | "sel" if !st.set.is_empty() => {
+            let (lo, hi) = magic::bounds(&st.set).ok_or("Seçim boş.")?;
+            Ok(vec![format!("{PREFIX}{} blok, {} → {} kutusunda", st.set.len(), fmt_pos(lo), fmt_pos(hi))])
         }
         "secim" | "sel" => {
             let r = st.selection()?;
@@ -416,8 +718,7 @@ fn run_in(st: &mut State, args: &[&str], ctx: &Ctx) -> Result<Vec<String>, Strin
             )])
         }
         "temizle" | "clear" => {
-            st.pos1 = None;
-            st.pos2 = None;
+            st.clear_selection();
             Ok(vec![format!("{PREFIX}Seçim temizlendi.")])
         }
         "durdur" | "stop" => {
@@ -427,24 +728,19 @@ fn run_in(st: &mut State, args: &[&str], ctx: &Ctx) -> Result<Vec<String>, Strin
             Ok(vec![format!("{PREFIX}Kuyruk boşaltıldı ({n} komut iptal).")])
         }
         "doldur" | "fill" => {
-            let r = st.selection()?;
             let block = block_arg(args.get(1))?;
-            let mut c = Vec::new();
-            fill_cmds(r, &block, "", &mut c);
+            let c = st.targets()?.iter().map(|r| fill_line(r, &block, "")).collect();
             Ok(queued(st.enqueue(c)?, "Doldur"))
         }
         "sil" | "air" => {
-            let r = st.selection()?;
-            let mut c = Vec::new();
-            fill_cmds(r, "air", "", &mut c);
+            let c = st.targets()?.iter().map(|r| fill_line(r, "air", "")).collect();
             Ok(queued(st.enqueue(c)?, "Sil"))
         }
         "degistir" | "replace" => {
-            let r = st.selection()?;
             let from = block_arg(args.get(1))?;
             let to = block_arg(args.get(2))?;
-            let mut c = Vec::new();
-            fill_cmds(r, &to, &format!(" replace {from}"), &mut c);
+            let tail = format!(" replace {from}");
+            let c = st.targets()?.iter().map(|r| fill_line(r, &to, &tail)).collect();
             Ok(queued(st.enqueue(c)?, "Değiştir"))
         }
         "dis" | "outline" | "bos" | "hollow" => {
@@ -555,10 +851,8 @@ fn run_in(st: &mut State, args: &[&str], ctx: &Ctx) -> Result<Vec<String>, Strin
                 "{PREFIX}Fırça hazır: yarıçap {radius}. H'yi basılı tutup bloklara bak."
             )])
         }
-        "geri" | "undo" => Err(
-            "Geri alma bu sürümde yok. Büyük işlerden önce dünyanın yedeğini al.".into(),
-        ),
-        other => Err(format!("Bilinmeyen komut: {other}. /eksen yardim")),
+        other => super::eksen_editor::command(st, args, ctx)
+            .unwrap_or_else(|| Err(format!("Bilinmeyen komut: {other}. /eksen yardim"))),
     }
 }
 

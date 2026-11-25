@@ -7,7 +7,7 @@ değiştiği için orada çalışmazlar.
 
 | Klasör | Mod | Sürüm | Kaynak / lisans |
 | --- | --- | --- | --- |
-| `eksen` | Eksen | — | mihehk |
+| `eksen` | Eksen (Axiom araçları, editör ekranı, AxiomPaper uyumu) | 16.10.2 | mihehk |
 | `shulkerboxtooltip` | ShulkerBoxTooltip | — | MisterPeModder (Yanis Guaye), MIT |
 | `noreloadscreen` | Remove Reloading Screen (RRLS) | mhv2 | dima_dencep, OSL-3.0 |
 | `hatlayers` | HatLayers | mhv1.2 | mihehk, MIT |

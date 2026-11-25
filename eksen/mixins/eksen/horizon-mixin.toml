@@ -1,6 +1,6 @@
 [mod]
 id = "eksen"
-version = "1.0.0"
+version = "16.10.2"
 priority = 100
 
 # Pinned: world_primitives (the in-world selection box) is not a catalogued
@@ -14,6 +14,80 @@ id = "state"
 file = "crates/horizon-client/src/game.rs"
 name = "eksen"
 source = "state.rs"
+
+# Magic Select and the block set it selects (plain Rust, see magic.rs).
+[[module]]
+id = "magic"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_magic"
+source = "magic.rs"
+
+# What every tool shares: the Tool trait, brushes, noise (core.rs).
+[[module]]
+id = "core"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_core"
+source = "core.rs"
+
+# The tools, as Axiom's documentation lists them (plain Rust).
+[[module]]
+id = "tools_select"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_tools_select"
+source = "tools_select.rs"
+
+[[module]]
+id = "tools_paint"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_tools_paint"
+source = "tools_paint.rs"
+
+[[module]]
+id = "tools_draw"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_tools_draw"
+source = "tools_draw.rs"
+
+[[module]]
+id = "tools_terrain"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_tools_terrain"
+source = "tools_terrain.rs"
+
+# The tenth slot's builder tools, undo / redo, symmetry (builder.rs).
+[[module]]
+id = "builder"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_builder"
+source = "builder.rs"
+
+# Capabilities, flight speed and the toolbox (abilities.rs).
+[[module]]
+id = "abilities"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_abilities"
+source = "abilities.rs"
+
+# The editor that runs the tools and queues their edits (editor.rs).
+[[module]]
+id = "editor"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_editor"
+source = "editor.rs"
+
+# The server's AxiomPaper plugin: handshake, block buffers (axiom.rs).
+[[module]]
+id = "axiom"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_axiom"
+source = "axiom.rs"
+
+# The editor screen, Right Shift (ui.rs; the ui_*.rs hooks draw and click).
+[[module]]
+id = "ui"
+file = "crates/horizon-client/src/game.rs"
+name = "eksen_ui"
+source = "ui.rs"
 
 [[injection]]
 id = "list"
@@ -83,4 +157,107 @@ helper = "world.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "primitives", ty = "&mut WorldPrimitives", value = "&mut *primitives" },
+]
+
+# Every play packet from the server: AxiomPaper's payloads (packet.rs).
+[[injection]]
+id = "packet"
+hook = "client_packet"
+hook_version = 1
+kind = "HEAD"
+helper = "packet.rs"
+bindings = [
+  { name = "packet", ty = "&horizon_protocol::packets::play::Clientbound", value = "packet" },
+]
+
+# The editor screen (Right Shift): kept in step each frame, drawn, clicked.
+[[injection]]
+id = "ui_frame"
+hook = "frame"
+hook_version = 1
+kind = "HEAD"
+helper = "ui_frame.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "ui_screen"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_render_post"
+helper = "ui_screen.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+]
+
+[[injection]]
+id = "ui_mouse"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_button_pressed_pre"
+helper = "ui_mouse.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "ui_drag"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_dragged_pre"
+helper = "ui_drag.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "ui_released"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_button_released_pre"
+helper = "ui_released.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "ui_scroll"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_scrolled_pre"
+helper = "ui_scroll.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "ui_keys"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_key_pressed_pre"
+helper = "ui_keys.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "modifiers", ty = "u32", value = "modifiers" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "ui_chars"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::Game<'_>::native_screen_char_typed_pre"
+helper = "ui_chars.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "c", ty = "char", value = "c" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
